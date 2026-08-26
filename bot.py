@@ -12,12 +12,19 @@ import telebot
 from telebot.types import InlineKeyboardButton,InlineKeyboardMarkup,InputMediaPhoto,InputMediaVideo
 from apscheduler.schedulers.background import BackgroundScheduler
 
-logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")
+logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s",force=True)
+# Force unbuffered logs (Render mein logs jaldi dikhne ke liye)
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 log=logging.getLogger("alex")
 
 # ---- CONFIG (env vars se aate hain — Render pe environment variables set karna) ----
-TOKEN=os.getenv("BOT_TOKEN","")
-OWNER=int(os.getenv("OWNER_ID","0"))
+# Default values (Pydroid 3 / local mein asani ke liye; Render mein env vars override karte hain)
+DEFAULT_BOT_TOKEN = "8926710999:AAE5B8_8cY5D8Vn32hMEHIpip3yvFuvOLtw"  # @Romiie_bot
+DEFAULT_OWNER_ID = 7105782769
+
+TOKEN=os.getenv("BOT_TOKEN", DEFAULT_BOT_TOKEN)
+OWNER=int(os.getenv("OWNER_ID", str(DEFAULT_OWNER_ID)))
 DASH_USER=os.getenv("DASH_USER","admin")
 DASH_PASS=os.getenv("DASH_PASS","alex@stor2026")
 # Render PORT env var provide karta hai; local mein 5000 use
@@ -941,10 +948,13 @@ def ch_follow(m):
 # ============ DASHBOARD ============
 @app.route("/health")
 def health():
-    return {"ok": True, "bot": "alex-stor-bot", "uptime": True}, 200
+    return {"ok": True, "bot": "alex-stor-bot", "on": D.get("on",0), "presets": len(D.get("presets",{})), "targets": len(D.get("targets",{}))}, 200
 
 @app.route("/")
 def dash():
+    # Render's health checker HEAD request ke liye 200 return karo (auth mat mango)
+    if request.method == "HEAD":
+        return "ok", 200
     auth=request.authorization
     if not auth or auth.username!=DASH_USER or auth.password!=DASH_PASS:
         return Response("Login required",401,{"WWW-Authenticate":'Basic realm="Alex Bot"'})
