@@ -1,0 +1,6 @@
+start - Welcome + Main Menu
+menu - Open Tap-Tap Button Menu
+help2 - Full Text Command List
+status - Bot Status
+stats - Statistics
+backup - Download Backup
