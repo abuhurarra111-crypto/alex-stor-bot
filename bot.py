@@ -206,12 +206,11 @@ def send_to_targets(p,tgt=None,ctx=None):
     if not D["on"]:return "🔴 Master OFF"
     if not p:return "❌ No preset"
     if quiet():return f"🌙 Quiet hours"
-    ts=[D["targets"][str(resolve(t["chat_id"])) if t["chat_id"] and isinstance(t["chat_id"],str) and t["chat_id"].startswith("@") else t["chat_id"]] for t in ([D["targets"].get(str(resolve(tgt)))] if tgt else [t for t in D["targets"].values() if t.get("a",1)])]
-    # fix: simpler listing
+    # Build list of target dicts properly (use .get with fallback instead of direct [] access)
     if tgt:
         rid=resolve(tgt)
         if rid is None:return "❌ Target resolve failed"
-        ts=[D["targets"].get(str(rid),{"chat_id":str(rid),"title":str(rid)})]
+        ts=[D["targets"].get(str(rid),{"chat_id":rid,"title":str(rid)})]
     else:
         ts=[t for t in D["targets"].values() if t.get("a",1)]
     if not ts:return "❌ Koi active target nahi"
@@ -219,9 +218,15 @@ def send_to_targets(p,tgt=None,ctx=None):
     for t in ts:
         cid=t.get("chat_id")
         if cid is None:continue
+        # Resolve @username to numeric ID if needed
         if isinstance(cid,str) and cid.startswith("@"):
             cid=resolve(cid)
             if cid is None:fail+=1;continue
+            # Ensure numeric ID is the stored key
+            if str(cid) not in D["targets"]:
+                t["chat_id"]=cid
+                D["targets"][str(cid)]=t
+                save()
         dly=float(t.get("d") or D["delay"])
         if D["randdelay"]:dly=jitter(dly,D["jitter"])
         if dly>0:time.sleep(dly)
