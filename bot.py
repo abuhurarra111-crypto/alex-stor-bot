@@ -7,7 +7,7 @@
 import os,json,re,time,random,threading,logging
 from datetime import datetime,timedelta
 from io import BytesIO
-from flask import Flask,redirect,Response,render_template_string
+from flask import Flask,redirect,Response,render_template_string,request
 import telebot
 from telebot.types import InlineKeyboardButton,InlineKeyboardMarkup,InputMediaPhoto,InputMediaVideo
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,13 +15,26 @@ from apscheduler.schedulers.background import BackgroundScheduler
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(message)s")
 log=logging.getLogger("alex")
 
-# ---- CONFIG (env vars se aate hain, setup script ne set kiya hai) ----
+# ---- CONFIG (env vars se aate hain — Render pe environment variables set karna) ----
 TOKEN=os.getenv("BOT_TOKEN","")
 OWNER=int(os.getenv("OWNER_ID","0"))
 DASH_USER=os.getenv("DASH_USER","admin")
 DASH_PASS=os.getenv("DASH_PASS","alex@stor2026")
-DASH_PORT=int(os.getenv("DASH_PORT","5000"))
+# Render PORT env var provide karta hai; local mein 5000 use
+DASH_PORT=int(os.getenv("PORT",os.getenv("DASH_PORT","10000")))
+# Public URL click tracking ke liye (Render RENDER_EXTERNAL_URL deta hai)
+PUBLIC_URL=os.getenv("RENDER_EXTERNAL_URL",os.getenv("PUBLIC_URL",f"http://127.0.0.1:{DASH_PORT}")).rstrip("/")
 TZ=os.getenv("TZ","Asia/Karachi")
+
+# .env file support (local run ke liye)
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(_env_path):
+    for _line in open(_env_path):
+        _line=_line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k,_v=_line.split("=",1); os.environ.setdefault(_k.strip(),_v.strip())
+    TOKEN=os.getenv("BOT_TOKEN", TOKEN)
+    OWNER=int(os.getenv("OWNER_ID", str(OWNER)))
 DATA=os.path.join(os.path.dirname(os.path.abspath(__file__)),"data.json")
 bot=telebot.TeleBot(TOKEN,threaded=True)
 # Timezone-safe init (Termux Python 3.14 mein tzdata chahiye)
@@ -120,18 +133,10 @@ def apply_tmpl(t,c):
     ctx.update(c or {})
     def r(m): return str(ctx.get(m.group(1).lower(),m.group(0)))
     return re.sub(r"\{([^}]+)\}",r,t)
-def rewrite_urls(text,cid):
-    if not text:return text
-    def rep(m):
-        u=m.group(0).rstrip(").,;");trail=m.group(0)[len(u):]
-        slug=hashlib.md5(u.encode()).hexdigest()[:8] if False else str(abs(hash(u)))[:8]
-        D["slugs"][slug]={"to":u};return f"http://127.0.0.1:{DASH_PORT}/r/{slug}?s={cid}"+trail
-    return re.sub(r"https?://[^\s<>\"']+",rep,text)
-
 import hashlib
 def rewrite_urls(text,cid):
     if not text:return text
-    base=f"http://127.0.0.1:{DASH_PORT}/r/"
+    base=f"{PUBLIC_URL}/r/"
     def rep(m):
         u=m.group(0).rstrip(").,;");trail=m.group(0)[len(u):]
         slug=hashlib.md5(u.encode()).hexdigest()[:8]
@@ -260,35 +265,6 @@ def pick_and_send_preset(cid,m):
     threading.Thread(target=run,daemon=True).start()
 
 # ============ COMMANDS ============
-@bot.message_handler(commands=["start","help"])
-@admin_only
-def h_start(m):
-    bot.send_message(m.chat.id,
-"""<b>🤖 Welcome to Alex Stor Bot v3 — Your AI Shop Promotion Bot!</b>
-
-<b>Quick Start (5 easy steps):</b>
-1. Make your first ad preset → /addpreset my_ad
-2. Set it as default → /setdefault my_ad
-3. Add safety settings (recommended):
-   • /blacklist addword admin
-   • /blacklist addword mod
-   • /delay 5
-   • /randdelay on 6
-4. Add bot as ADMIN to your target group
-5. Add target → /addtarget @yourgroup
-Then send any message in the group — your ad will auto-reply!
-
-<b>Useful Commands:</b>
-📝 /addpreset — Create new ad (text/photo/video/doc)
-📦 /presets — See all your ads
-🎯 /addtarget — Add group/channel
-⚡ /sendnow — Send ad right now
-🔑 /kw add word preset — Keyword triggers (ad only on specific words)
-⏰ /schedule /schedulewindow — Scheduled posts
-📊 /stats /logs /status — See how bot is running
-
-<b>Full command list:</b> /help2
-<b>📱 Dashboard:</b> Open http://localhost:5000 in your phone browser (admin / alex@stor2026)""", parse_mode="HTML")
 
 @bot.message_handler(commands=["help2"])
 @admin_only
@@ -963,7 +939,9 @@ def ch_follow(m):
     threading.Thread(target=run,daemon=True).start()
 
 # ============ DASHBOARD ============
-DASH_HTML=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"dashboard.html")).read() if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)),"dashboard.html")) else "<h3>Alex Stor Bot</h3><p>Dashboard active.</p>"
+@app.route("/health")
+def health():
+    return {"ok": True, "bot": "alex-stor-bot", "uptime": True}, 200
 
 @app.route("/")
 def dash():
